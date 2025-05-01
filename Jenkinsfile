@@ -2,40 +2,46 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_HUB_CREDENTIALS = credentials('docker-credentials-id') // ✅ set to exact ID
+        // Add the correct npm path
+        PATH = "/opt/homebrew/bin:$PATH" // Add this line to make npm available in Jenkins
     }
 
     stages {
         stage('Checkout') {
             steps {
-                git url: 'https://github.com/vishwakant1602/orderinventorysystem--1-', branch: 'main'
+                git 'https://github.com/vishwakant1602/orderinventorysystem--1-.git'
             }
         }
 
         stage('Install Dependencies') {
             steps {
                 script {
-                    // Run npm ci with --legacy-peer-deps to avoid peer dependency issues
+                    // Install dependencies using npm
                     sh 'npm ci --legacy-peer-deps'
                 }
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Build') {
             steps {
                 script {
-                    docker.withRegistry('', DOCKER_HUB_CREDENTIALS) {
-                        def app = docker.build("vishwakant1602/orderinventory")
-                        app.push("latest")
-                    }
+                    sh 'npm run build'
                 }
             }
         }
 
-        stage('Deploy to Kubernetes') {
+        stage('Test') {
             steps {
                 script {
-                    sh 'kubectl apply -f k8s/'
+                    sh 'npm run test'
+                }
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                script {
+                    echo 'Deploying the application...'
                 }
             }
         }
@@ -43,14 +49,7 @@ pipeline {
 
     post {
         always {
-            script {
-                echo "Pipeline finished."
-            }
-        }
-        failure {
-            script {
-                echo "Build failed. Check Jenkins logs."
-            }
+            echo 'Cleaning up...'
         }
     }
 }
