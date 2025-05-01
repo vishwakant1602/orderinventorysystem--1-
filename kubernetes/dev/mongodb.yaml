@@ -1,0 +1,159 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mongodb-secret
+  namespace: orderinventory
+type: Opaque
+data:
+  mongodb-root-username: cm9vdA== # root
+  mongodb-root-password: cm9vdHBhc3N3b3Jk # rootpassword
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mongodb-configmap
+  namespace: orderinventory
+data:
+  mongo-init.js: |
+    // Create collections and indexes
+    db = db.getSiblingDB('orderinventorydb');
+
+    // Create users collection
+    db.createCollection('users');
+    db.users.createIndex({ "email": 1 }, { unique: true });
+
+    // Create inventory collection
+    db.createCollection('inventory');
+    db.inventory.createIndex({ "sku": 1 }, { unique: true });
+
+    // Create orders collection
+    db.createCollection('orders');
+    db.orders.createIndex({ "orderId": 1 }, { unique: true });
+    db.orders.createIndex({ "customerId": 1 });
+
+    // Create payments collection
+    db.createCollection('payments');
+    db.payments.createIndex({ "paymentId": 1 }, { unique: true });
+    db.payments.createIndex({ "orderId": 1 });
+
+    // Create customers collection
+    db.createCollection('customers');
+    db.customers.createIndex({ "customerId": 1 }, { unique: true });
+    db.customers.createIndex({ "email": 1 }, { unique: true });
+
+    // Insert admin user
+    db.users.insertOne({
+      "email": "admin@example.com",
+      "password": "$2a$10$N.zmdr9k7uOCQb376NoUnuTBpKLgMBxUxSuPXpWyYmS5rQAnEe2i.", // password: admin123
+      "firstName": "Admin",
+      "lastName": "User",
+      "role": "ADMIN",
+      "createdAt": new Date(),
+      "updatedAt": new Date()
+    });
+
+    // Insert regular user
+    db.users.insertOne({
+      "email": "user@example.com",
+      "password": "$2a$10$8K1p/a7yx9O0Z7MdywzfiO/8o4Vn9Vp5csZ7LcO2BuOsLQUcxZUdK", // password: user123
+      "firstName": "Regular",
+      "lastName": "User",
+      "role": "USER",
+      "createdAt": new Date(),
+      "updatedAt": new Date()
+    });
+
+    print("MongoDB initialization completed successfully");
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mongodb
+  namespace: orderinventory
+spec:
+  serviceName: mongodb
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mongodb
+  template:
+    metadata:
+      labels:
+        app: mongodb
+    spec:
+      containers:
+      - name: mongodb
+        image: mongo:6.0
+        ports:
+        - containerPort: 27017
+        env:
+        - name: MONGO_INITDB_ROOT_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: mongodb-secret
+              key: mongodb-root-username
+        - name: MONGO_INITDB_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mongodb-secret
+              key: mongodb-root-password
+        - name: MONGO_INITDB_DATABASE
+          value: orderinventorydb
+        volumeMounts:
+        - name: mongodb-data
+          mountPath: /data/db
+        - name: mongo-init
+          mountPath: /docker-entrypoint-initdb.d/mongo-init.js
+          subPath: mongo-init.js
+        resources:
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+        livenessProbe:
+          exec:
+            command:
+            - mongosh
+            - --eval
+            - "db.adminCommand('ping')"
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+            - mongosh
+            - --eval
+            - "db.adminCommand('ping')"
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+      volumes:
+      - name: mongo-init
+        configMap:
+          name: mongodb-configmap
+  volumeClaimTemplates:
+  - metadata:
+      name: mongodb-data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 5Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongodb
+  namespace: orderinventory
+spec:
+  selector:
+    app: mongodb
+  ports:
+  - port: 27017
+    targetPort: 27017
+  clusterIP: None

@@ -1,0 +1,51 @@
+server:
+  port: 8761
+
+spring:
+  application:
+    name: eureka-server
+  profiles:
+    active: default
+
+eureka:
+  instance:
+    hostname: localhost
+  client:
+    registerWithEureka: false
+    fetchRegistry: false
+    serviceUrl:
+      defaultZone: http://${eureka.instance.hostname}:${server.port}/eureka/
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+---
+spring:
+  config:
+    activate:
+      on-profile: docker
+eureka:
+  instance:
+    prefer-ip-address: true
+  client:
+    serviceUrl:
+      defaultZone: http://eureka-server:8761/eureka/
+
+---
+spring:
+  config:
+    activate:
+      on-profile: kubernetes
+eureka:
+  instance:
+    prefer-ip-address: true
+    hostname: ${HOSTNAME}.eureka-server
+  client:
+    serviceUrl:
+      defaultZone: http://eureka-server:8761/eureka/
